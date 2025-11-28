@@ -1,0 +1,64 @@
+---
+- name: Deploy LXC Container on Proxmox
+  hosts: proxmox
+  gather_facts: no
+
+  vars:
+    container_id: 100
+    container_hostname: "container-01"
+    container_password: "changeme"
+    container_ostemplate: "local:vztmpl/debian-12-standard_12.2-1_amd64.tar.zst"
+    container_storage: "local-lvm"
+    container_memory: 2048
+    container_swap: 512
+    container_cores: 2
+    container_disk: "8"
+    container_netif: |
+      {
+        "net0": "name=eth0,bridge=vmbr0,ip=dhcp"
+      }
+
+  tasks:
+    - name: Check if container already exists
+      ansible.builtin.shell: "pct status {{ container_id }}"
+      register: container_exists
+      failed_when: false
+      changed_when: false
+
+    - name: Create LXC container
+      community.general.proxmox:
+        node: "{{ inventory_hostname_short }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password | default(omit) }}"
+        api_token_id: "{{ proxmox_api_token_id | default(omit) }}"
+        api_token_secret: "{{ proxmox_api_token_secret | default(omit) }}"
+        api_host: "{{ proxmox_api_host }}"
+        vmid: "{{ container_id }}"
+        hostname: "{{ container_hostname }}"
+        ostemplate: "{{ container_ostemplate }}"
+        storage: "{{ container_storage }}"
+        memory: "{{ container_memory }}"
+        swap: "{{ container_swap }}"
+        cores: "{{ container_cores }}"
+        disk: "{{ container_disk }}"
+        netif: "{{ container_netif }}"
+        password: "{{ container_password }}"
+        unprivileged: yes
+        onboot: yes
+        state: present
+      when: container_exists.rc != 0
+
+    - name: Start container
+      community.general.proxmox:
+        node: "{{ inventory_hostname_short }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password | default(omit) }}"
+        api_token_id: "{{ proxmox_api_token_id | default(omit) }}"
+        api_token_secret: "{{ proxmox_api_token_secret | default(omit) }}"
+        api_host: "{{ proxmox_api_host }}"
+        vmid: "{{ container_id }}"
+        state: started
+
+    - name: Display container info
+      ansible.builtin.debug:
+        msg: "Container {{ container_id }} ({{ container_hostname }}) has been created and started"

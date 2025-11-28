@@ -1,0 +1,11 @@
+*.retry
+*.log
+.vault_pass
+vault_pass.txt
+*.pyc
+__pycache__/
+.ansible/
+*.swp
+*.swo
+*~
+.DS_Store

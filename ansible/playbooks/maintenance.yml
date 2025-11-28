@@ -1,0 +1,68 @@
+---
+- name: Proxmox Maintenance Tasks
+  hosts: proxmox
+  gather_facts: yes
+  become: yes
+
+  tasks:
+    - name: Update all packages
+      ansible.builtin.apt:
+        upgrade: dist
+        update_cache: yes
+        autoremove: yes
+        autoclean: yes
+      tags: ['update']
+
+    - name: Check if reboot is required
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+      tags: ['update']
+
+    - name: Display reboot status
+      ansible.builtin.debug:
+        msg: "Reboot is {{ 'REQUIRED' if reboot_required.stat.exists else 'not required' }}"
+      tags: ['update']
+
+    - name: Clean up old logs
+      ansible.builtin.command: journalctl --vacuum-time=30d
+      changed_when: true
+      tags: ['cleanup']
+
+    - name: Check disk usage
+      ansible.builtin.command: df -h
+      register: disk_usage
+      changed_when: false
+      tags: ['info']
+
+    - name: Display disk usage
+      ansible.builtin.debug:
+        var: disk_usage.stdout_lines
+      tags: ['info']
+
+    - name: List all VMs and containers
+      ansible.builtin.shell: |
+        echo "=== Virtual Machines ==="
+        qm list
+        echo ""
+        echo "=== Containers ==="
+        pct list
+      register: vm_list
+      changed_when: false
+      tags: ['info']
+
+    - name: Display VMs and containers
+      ansible.builtin.debug:
+        var: vm_list.stdout_lines
+      tags: ['info']
+
+    - name: Check Proxmox services status
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: started
+      loop:
+        - pve-cluster
+        - pvedaemon
+        - pveproxy
+        - pvestatd
+      tags: ['services']

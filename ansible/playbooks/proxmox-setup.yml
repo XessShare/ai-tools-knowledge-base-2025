@@ -1,0 +1,72 @@
+---
+- name: Configure Proxmox Host
+  hosts: proxmox
+  gather_facts: yes
+  become: yes
+
+  tasks:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      tags: ['packages']
+
+    - name: Install essential packages
+      ansible.builtin.apt:
+        name:
+          - vim
+          - curl
+          - wget
+          - git
+          - htop
+          - iotop
+          - net-tools
+          - tcpdump
+          - tmux
+          - screen
+          - python3-pip
+          - python3-proxmoxer
+          - python3-requests
+        state: present
+      tags: ['packages']
+
+    - name: Configure timezone
+      community.general.timezone:
+        name: "{{ timezone | default('UTC') }}"
+      tags: ['system']
+
+    - name: Configure NTP
+      ansible.builtin.apt:
+        name: systemd-timesyncd
+        state: present
+      tags: ['system']
+
+    - name: Start and enable timesyncd
+      ansible.builtin.systemd:
+        name: systemd-timesyncd
+        state: started
+        enabled: yes
+      tags: ['system']
+
+    - name: Gather Proxmox version info
+      ansible.builtin.command: pveversion
+      register: pve_version
+      changed_when: false
+      tags: ['info']
+
+    - name: Display Proxmox version
+      ansible.builtin.debug:
+        var: pve_version.stdout_lines
+      tags: ['info']
+
+    - name: Check Proxmox cluster status
+      ansible.builtin.command: pvecm status
+      register: cluster_status
+      changed_when: false
+      failed_when: false
+      tags: ['info']
+
+    - name: Display cluster status
+      ansible.builtin.debug:
+        msg: "{{ cluster_status.stdout_lines | default('Not in a cluster') }}"
+      tags: ['info']

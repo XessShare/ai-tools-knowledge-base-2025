@@ -1,0 +1,65 @@
+---
+- name: Deploy VM on Proxmox
+  hosts: proxmox
+  gather_facts: no
+
+  vars:
+    vm_id: 200
+    vm_name: "vm-01"
+    vm_memory: 4096
+    vm_cores: 2
+    vm_sockets: 1
+    vm_disk_size: "32G"
+    vm_storage: "local-lvm"
+    vm_iso: "local:iso/debian-12.2.0-amd64-netinst.iso"
+    vm_network_bridge: "vmbr0"
+    vm_network_model: "virtio"
+
+  tasks:
+    - name: Check if VM already exists
+      ansible.builtin.shell: "qm status {{ vm_id }}"
+      register: vm_exists
+      failed_when: false
+      changed_when: false
+
+    - name: Create VM
+      community.general.proxmox_kvm:
+        node: "{{ inventory_hostname_short }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password | default(omit) }}"
+        api_token_id: "{{ proxmox_api_token_id | default(omit) }}"
+        api_token_secret: "{{ proxmox_api_token_secret | default(omit) }}"
+        api_host: "{{ proxmox_api_host }}"
+        vmid: "{{ vm_id }}"
+        name: "{{ vm_name }}"
+        memory: "{{ vm_memory }}"
+        cores: "{{ vm_cores }}"
+        sockets: "{{ vm_sockets }}"
+        cpu: "host"
+        ostype: "l26"
+        scsihw: "virtio-scsi-pci"
+        net:
+          net0: "{{ vm_network_model }},bridge={{ vm_network_bridge }}"
+        ide:
+          ide2: "{{ vm_iso }},media=cdrom"
+        virtio:
+          virtio0: "{{ vm_storage }}:{{ vm_disk_size }}"
+        boot: "order=virtio0;ide2"
+        onboot: yes
+        state: present
+      when: vm_exists.rc != 0
+
+    - name: Start VM
+      community.general.proxmox_kvm:
+        node: "{{ inventory_hostname_short }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password | default(omit) }}"
+        api_token_id: "{{ proxmox_api_token_id | default(omit) }}"
+        api_token_secret: "{{ proxmox_api_token_secret | default(omit) }}"
+        api_host: "{{ proxmox_api_host }}"
+        vmid: "{{ vm_id }}"
+        state: started
+
+    - name: Display VM info
+      ansible.builtin.debug:
+        msg: "VM {{ vm_id }} ({{ vm_name }}) has been created and started"

@@ -1,0 +1,10 @@
+---
+- name: Complete Proxmox Homelab Setup
+  hosts: proxmox
+  gather_facts: yes
+  become: yes
+
+  tasks:
+    - name: Include proxmox-setup playbook
+      ansible.builtin.import_playbook: proxmox-setup.yml
+      tags: ['setup', 'proxmox']

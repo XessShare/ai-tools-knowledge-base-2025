@@ -1,0 +1,14 @@
+*.retry
+*.log
+.vault_pass
+vault_pass.txt
+group_vars/*/vault.yml
+host_vars/*/vault.yml
+*.pyc
+__pycache__/
+.ansible/
+collections/
+/tmp/
+*.swp
+*.swo
+*~
