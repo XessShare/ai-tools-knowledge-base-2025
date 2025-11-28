@@ -1,0 +1,329 @@
+---
+- name: Comprehensive Proxmox Server Scan
+  hosts: proxmox
+  gather_facts: yes
+  become: yes
+
+  tasks:
+    # ========================================
+    # SYSTEM INFORMATION
+    # ========================================
+    - name: Gather hostname
+      ansible.builtin.command: hostname
+      register: system_hostname
+      changed_when: false
+
+    - name: Gather system information
+      ansible.builtin.command: uname -a
+      register: system_uname
+      changed_when: false
+
+    - name: Check CPU information
+      ansible.builtin.command: lscpu
+      register: cpu_info
+      changed_when: false
+
+    - name: Check memory information
+      ansible.builtin.command: free -h
+      register: memory_info
+      changed_when: false
+
+    - name: Check disk information
+      ansible.builtin.command: df -h
+      register: disk_info
+      changed_when: false
+
+    - name: Get OS release information
+      ansible.builtin.slurp:
+        src: /etc/os-release
+      register: os_release
+
+    - name: Get uptime
+      ansible.builtin.command: uptime
+      register: system_uptime
+      changed_when: false
+
+    # ========================================
+    # PROXMOX INFORMATION
+    # ========================================
+    - name: Get Proxmox version
+      ansible.builtin.command: pveversion --verbose
+      register: pve_version
+      changed_when: false
+
+    - name: Check Proxmox cluster status
+      ansible.builtin.command: pvecm status
+      register: cluster_status
+      changed_when: false
+      failed_when: false
+
+    - name: Check Proxmox nodes
+      ansible.builtin.command: pvecm nodes
+      register: cluster_nodes
+      changed_when: false
+      failed_when: false
+
+    # ========================================
+    # STORAGE INFORMATION
+    # ========================================
+    - name: List Proxmox storage
+      ansible.builtin.command: pvesm status
+      register: storage_status
+      changed_when: false
+
+    - name: Check ZFS pools (if any)
+      ansible.builtin.command: zpool list
+      register: zfs_pools
+      changed_when: false
+      failed_when: false
+
+    - name: Check ZFS datasets (if any)
+      ansible.builtin.command: zfs list
+      register: zfs_datasets
+      changed_when: false
+      failed_when: false
+
+    - name: Check LVM volumes
+      ansible.builtin.command: lvs
+      register: lvm_volumes
+      changed_when: false
+      failed_when: false
+
+    - name: Check volume groups
+      ansible.builtin.command: vgs
+      register: volume_groups
+      changed_when: false
+      failed_when: false
+
+    - name: Check physical volumes
+      ansible.builtin.command: pvs
+      register: physical_volumes
+      changed_when: false
+      failed_when: false
+
+    # ========================================
+    # VIRTUAL MACHINES
+    # ========================================
+    - name: List all virtual machines
+      ansible.builtin.command: qm list
+      register: vm_list
+      changed_when: false
+
+    - name: Get detailed VM information
+      ansible.builtin.shell: |
+        for vmid in $(qm list | awk 'NR>1 {print $1}'); do
+          echo "=== VM $vmid ==="
+          qm config $vmid
+          echo ""
+        done
+      register: vm_details
+      changed_when: false
+      failed_when: false
+
+    # ========================================
+    # CONTAINERS
+    # ========================================
+    - name: List all containers
+      ansible.builtin.command: pct list
+      register: container_list
+      changed_when: false
+
+    - name: Get detailed container information
+      ansible.builtin.shell: |
+        for ctid in $(pct list | awk 'NR>1 {print $1}'); do
+          echo "=== Container $ctid ==="
+          pct config $ctid
+          echo ""
+        done
+      register: container_details
+      changed_when: false
+      failed_when: false
+
+    # ========================================
+    # NETWORK INFORMATION
+    # ========================================
+    - name: Get network interfaces
+      ansible.builtin.command: ip addr show
+      register: network_interfaces
+      changed_when: false
+
+    - name: Get network bridges
+      ansible.builtin.command: brctl show
+      register: network_bridges
+      changed_when: false
+      failed_when: false
+
+    - name: Get routing table
+      ansible.builtin.command: ip route show
+      register: routing_table
+      changed_when: false
+
+    - name: Check network configuration files
+      ansible.builtin.slurp:
+        src: /etc/network/interfaces
+      register: network_config
+      failed_when: false
+
+    # ========================================
+    # SERVICES
+    # ========================================
+    - name: Check Proxmox services
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+      register: pve_services
+      loop:
+        - pve-cluster
+        - pvedaemon
+        - pveproxy
+        - pvestatd
+        - pvescheduler
+      failed_when: false
+
+    - name: List all running services
+      ansible.builtin.command: systemctl list-units --type=service --state=running
+      register: running_services
+      changed_when: false
+
+    # ========================================
+    # EXISTING HOMELAB STRUCTURE
+    # ========================================
+    - name: Check if /root/proxmox-homelab exists
+      ansible.builtin.stat:
+        path: /root/proxmox-homelab
+      register: homelab_dir
+
+    - name: List proxmox-homelab contents
+      ansible.builtin.command: ls -lah /root/proxmox-homelab
+      register: homelab_contents
+      when: homelab_dir.stat.exists
+      changed_when: false
+
+    - name: Find all files in proxmox-homelab
+      ansible.builtin.find:
+        paths: /root/proxmox-homelab
+        recurse: yes
+        file_type: file
+      register: homelab_files
+      when: homelab_dir.stat.exists
+
+    - name: Read README if exists
+      ansible.builtin.slurp:
+        src: /root/proxmox-homelab/README.md
+      register: homelab_readme
+      when: homelab_dir.stat.exists
+      failed_when: false
+
+    - name: Read CLAUDE.md if exists
+      ansible.builtin.slurp:
+        src: /root/proxmox-homelab/CLAUDE.md
+      register: homelab_claude
+      when: homelab_dir.stat.exists
+      failed_when: false
+
+    - name: Check Git status in homelab
+      ansible.builtin.command: git -C /root/proxmox-homelab status
+      register: homelab_git
+      when: homelab_dir.stat.exists
+      changed_when: false
+      failed_when: false
+
+    - name: List Ansible playbooks in homelab
+      ansible.builtin.find:
+        paths: /root/proxmox-homelab/ansible
+        patterns: "*.yml,*.yaml"
+        recurse: yes
+      register: homelab_ansible
+      when: homelab_dir.stat.exists
+      failed_when: false
+
+    # ========================================
+    # BACKUPS
+    # ========================================
+    - name: Check backup configuration
+      ansible.builtin.command: cat /etc/pve/vzdump.cron
+      register: backup_cron
+      changed_when: false
+      failed_when: false
+
+    - name: List backup storage
+      ansible.builtin.command: ls -lh /var/lib/vz/dump/
+      register: backup_list
+      changed_when: false
+      failed_when: false
+
+    # ========================================
+    # SECURITY & UPDATES
+    # ========================================
+    - name: Check for available updates
+      ansible.builtin.command: apt list --upgradable
+      register: available_updates
+      changed_when: false
+
+    - name: Check firewall status
+      ansible.builtin.command: pve-firewall status
+      register: firewall_status
+      changed_when: false
+      failed_when: false
+
+    - name: Check fail2ban status
+      ansible.builtin.systemd:
+        name: fail2ban
+      register: fail2ban_status
+      failed_when: false
+
+    # ========================================
+    # DISPLAY RESULTS
+    # ========================================
+    - name: Create comprehensive report
+      ansible.builtin.debug:
+        msg: |
+
+          ╔══════════════════════════════════════════════════════════════╗
+          ║          PROXMOX SERVER SCAN REPORT                          ║
+          ╚══════════════════════════════════════════════════════════════╝
+
+          HOST: {{ inventory_hostname }} ({{ ansible_host }})
+          HOSTNAME: {{ system_hostname.stdout }}
+
+          ┌─────────────────────────────────────────────────────────────┐
+          │ SYSTEM INFORMATION                                          │
+          └─────────────────────────────────────────────────────────────┘
+          Kernel: {{ system_uname.stdout }}
+          Uptime: {{ system_uptime.stdout }}
+
+          ┌─────────────────────────────────────────────────────────────┐
+          │ PROXMOX VERSION                                             │
+          └─────────────────────────────────────────────────────────────┘
+          {{ pve_version.stdout }}
+
+    - name: Save full report to file
+      ansible.builtin.template:
+        src: server-scan-report.j2
+        dest: "/tmp/proxmox-scan-{{ inventory_hostname }}-{{ ansible_date_time.iso8601_basic_short }}.txt"
+      delegate_to: localhost
+      vars:
+        report_data:
+          hostname: "{{ system_hostname.stdout }}"
+          uname: "{{ system_uname.stdout }}"
+          uptime: "{{ system_uptime.stdout }}"
+          cpu: "{{ cpu_info.stdout_lines }}"
+          memory: "{{ memory_info.stdout_lines }}"
+          disk: "{{ disk_info.stdout_lines }}"
+          pve_version: "{{ pve_version.stdout_lines }}"
+          cluster_status: "{{ cluster_status.stdout_lines | default(['Not in cluster']) }}"
+          storage: "{{ storage_status.stdout_lines }}"
+          vms: "{{ vm_list.stdout_lines }}"
+          containers: "{{ container_list.stdout_lines }}"
+          network: "{{ network_interfaces.stdout_lines }}"
+          homelab_exists: "{{ homelab_dir.stat.exists }}"
+
+    - name: Display summary
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - "SCAN COMPLETE: {{ inventory_hostname }}"
+          - "=========================================="
+          - "VMs: {{ vm_list.stdout_lines | length - 1 }}"
+          - "Containers: {{ container_list.stdout_lines | length - 1 }}"
+          - "Homelab directory exists: {{ homelab_dir.stat.exists }}"
+          - "Report saved to: /tmp/proxmox-scan-{{ inventory_hostname }}-{{ ansible_date_time.iso8601_basic_short }}.txt"
